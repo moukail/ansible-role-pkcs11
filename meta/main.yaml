@@ -10,4 +10,6 @@ galaxy_info:
     - security
 
 dependencies:
-  - role: ansible-role-softhsm
+  - name: ansible-role-softhsm
+    src: git+https://github.com/moukail/ansible-role-softhsm.git
+    version: main
