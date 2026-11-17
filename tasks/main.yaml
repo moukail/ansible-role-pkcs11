@@ -1,0 +1,85 @@
+---
+- name: Install openSC
+  become: true
+  ansible.builtin.package:
+    name:
+      - opensc
+    state: present
+
+- name: Create SoftHSM token directory
+  ansible.builtin.file:
+    path: "{{ softhsm_token_dir }}"
+    state: directory
+    owner: "{{ softhsm_owner }}"
+    group: "{{ softhsm_group }}"
+    mode: "0700"
+
+- name: Configure SoftHSM
+  ansible.builtin.copy:
+    dest: "{{ softhsm_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      directories.tokendir = {{ softhsm_token_dir }}
+      objectstore.backend = file
+      log.level = DEBUG
+
+- name: Check if token already exists
+  ansible.builtin.command: softhsm2-util --show-slots
+  environment:
+    SOFTHSM2_CONF: "{{ softhsm_conf_path }}"
+  register: softhsm_slots
+  changed_when: false
+
+- name: Initialize SoftHSM token if missing
+  ansible.builtin.command: >
+    softhsm2-util --init-token
+    --slot 0
+    --label "{{ softhsm_token_label }}"
+    --so-pin "{{ softhsm_so_pin }}"
+    --pin "{{ softhsm_user_pin }}"
+  environment:
+    SOFTHSM2_CONF: "{{ softhsm_conf_path }}"
+  when: softhsm_token_label not in softhsm_slots.stdout
+
+- name: Initialize SoftHSM token if missing
+  ansible.builtin.shell: >
+    softhsm2-util --show-slots | awk -v label="{{ softhsm_token_label }}" '/^Slot / {slot=$2} $0 ~ "Label:[[:space:]]*" label {print slot}'
+  register: slot_id
+  changed_when: false
+
+- name: Extract slot ID for token label
+  ansible.builtin.set_fact:
+    slot_id: "{{ slot_id.stdout | trim }}"
+
+- name: Verify token slot was found
+  ansible.builtin.assert:
+    that:
+      - slot_id | length > 0
+    fail_msg: "SoftHSM token {{ softhsm_token_label }} was not found."
+
+- name: List PKCS11 objects
+  ansible.builtin.command: >
+    pkcs11-tool
+    --module "{{ softhsm_library }}"
+    --token-label "{{ softhsm_token_label }}"
+    --list-objects
+  register: pkcs11_objects
+  environment:
+    SOFTHSM2_CONF: "{{ softhsm_conf_path }}"
+  changed_when: false
+
+- name: Generate AES-256 key if missing
+  ansible.builtin.command: >
+    pkcs11-tool
+    --module {{ softhsm_library }}
+    --token-label {{ softhsm_token_label }}
+    --label "{{ softhsm_key_label }}"
+    --so-pin {{ softhsm_so_pin }}
+    --pin "{{ softhsm_user_pin }}"
+    --keygen 
+    --key-type aes:32
+  when: softhsm_key_label not in pkcs11_objects.stdout
+  environment:
+    SOFTHSM2_CONF: "{{ softhsm_conf_path }}"

@@ -1,0 +1,13 @@
+---
+softhsm_conf_path: /etc/softhsm2.conf
+softhsm_token_dir: /var/lib/softhsm/tokens
+
+softhsm_token_label: OpenBao
+softhsm_so_pin: "{{ vault_softhsm_so_pin }}"
+softhsm_user_pin: "{{ vault_softhsm_user_pin }}"
+
+softhsm_owner: "{{ ansible_user }}"
+softhsm_group: "{{ ansible_user }}"
+
+softhsm_library: /lib/softhsm/libsofthsm2.so
+softhsm_key_label: bao-root-key-aes
